@@ -1,0 +1,12 @@
+.venv
+
+dataset.csv
+
+data/
+fused_model*
+adapters/
+Modelfile
+
+llama.cpp
+
+.DS_Store
