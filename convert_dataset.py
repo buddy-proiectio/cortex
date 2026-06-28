@@ -2,7 +2,7 @@
 convert_dataset.py
 
 This script processes the source 'dataset.csv' file and formats the English and
-Korean financial news articles into Gemma-2 compatible prompt structures. It then
+Korean financial news articles into EXAONE-3.5-7.8B-Instruct compatible prompt structures. It then
 shuffles and splits the formatted data into 'train.jsonl' and 'valid.jsonl' files
 inside the target directory (default: './data') to be used for MLX fine-tuning.
 
@@ -21,7 +21,7 @@ import sys
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Convert and split CSV financial news dataset into Gemma-2 formatted JSONL files for MLX."
+        description="Convert and split CSV financial news dataset into EXAONE-3.5-7.8B-Instruct formatted JSONL files for MLX."
     )
     parser.add_argument(
         "--input",
@@ -55,13 +55,17 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def format_gemma2_prompt(en_text, ko_text):
+def format_exaone_prompt(en_text, ko_text):
     """
-    Formats the raw English and Korean articles into the Gemma-2 special token template.
+    Formats the raw English and Korean articles into the EXAONE-3.5 special token template,
+    using a sophisticated, finance-specialized system prompt, and using raw text in the user/assistant slots.
     """
     system_prompt = (
-        "Translate the following financial news into professional Korean. "
-        "Maintain exact numerical values and financial terms."
+        "You are a professional financial translator specializing in translating global financial and macroeconomic news articles. "
+        "Translate the given English financial news into professional, natural, and accurate Korean news tone. "
+        "Ensure all financial terms, indicators, and names are translated correctly according to standard financial terminology. "
+        "Maintain exact numerical values, currencies, percentages, and dates without any modification. "
+        "Do not add any conversational remarks, introductions, or explanations; output only the translated text."
     )
 
     # Ensure any windows-style newlines or extra whitespaces are standardized
@@ -69,14 +73,9 @@ def format_gemma2_prompt(en_text, ko_text):
     ko_text = ko_text.strip()
 
     prompt = (
-        f"<start_of_turn>user\n"
-        f"{system_prompt}\n\n"
-        f"Input:\n"
-        f"{en_text}\n"
-        f"<end_of_turn>\n\n"
-        f"<start_of_turn>model\n"
-        f"{ko_text}\n"
-        f"<end_of_turn>"
+        f"[|system|]{system_prompt}[|endofturn|]\n"
+        f"[|user|]{en_text}\n"
+        f"[|assistant|]{ko_text}[|endofturn|]"
     )
     return {"text": prompt}
 
@@ -159,7 +158,7 @@ def main():
                 # Skip empty or incomplete rows but log a warning
                 continue
 
-            formatted = format_gemma2_prompt(en_val, ko_val)
+            formatted = format_exaone_prompt(en_val, ko_val)
             records.append(formatted)
 
     total_records = len(records)

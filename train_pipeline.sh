@@ -14,7 +14,7 @@ set -e
 unset VIRTUAL_ENV
 
 # Default configurations
-MODEL="mlx-community/gemma-2-9b-it-4bit"
+MODEL="mlx-community/EXAONE-3.5-7.8B-Instruct-4bit"
 DATA_DIR="./data"
 NUM_LAYERS=16
 BATCH_SIZE=1             # Keep batch size small for VRAM limits

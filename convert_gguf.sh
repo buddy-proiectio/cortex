@@ -7,8 +7,11 @@
 
 set -e
 
+# Enable automatic trusting of Hugging Face remote code (required for EXAONE models)
+export HF_TRUST_REMOTE_CODE=1
+
 # Default configurations
-BASE_MODEL="google/gemma-2-9b-it"
+BASE_MODEL="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct"
 ADAPTER_PATH="adapters"
 TEMP_FUSED_DIR="fused_model_fp16"
 TEMP_GGUF_FP16="fused_model_fp16.gguf"
@@ -70,13 +73,13 @@ fi
 # 2. Step 1: Fuse adapters into unquantized base model
 echo "[*] Step 1: Fusing adapters with unquantized base model ($BASE_MODEL) in FP16/BF16..."
 echo "    (This might download the base model files if not already cached)"
-uv run python -m mlx_lm fuse \
+uv run python fuse_model.py \
   --model "$BASE_MODEL" \
   --adapter-path "$ADAPTER_PATH" \
   --save-path "$TEMP_FUSED_DIR"
 
 # Download missing tokenizer.model since mlx_lm fuse doesn't copy it, but llama.cpp requires it for Gemma/Gemma-2
-if [ ! -f "$TEMP_FUSED_DIR/tokenizer.model" ]; then
+if [[ "$BASE_MODEL" == *gemma* ]] && [ ! -f "$TEMP_FUSED_DIR/tokenizer.model" ]; then
     echo "[*] Downloading tokenizer.model from Hugging Face for $BASE_MODEL..."
     uv run python -c "
 from huggingface_hub import hf_hub_download
@@ -129,15 +132,14 @@ echo "[*] Step 7: Generating Modelfile for Ollama..."
 cat << 'EOF' > Modelfile
 FROM ./fused_model_q4_k_m.gguf
 
-# Gemma-2 chat template (User / Model alternation)
-TEMPLATE """{{ if .Prompt }}<start_of_turn>user
-{{ .Prompt }}<end_of_turn>
-{{ end }}<start_of_turn>model
-{{ .Response }}<end_of_turn>
-"""
+# EXAONE 3.5 chat template
+SYSTEM "You are a professional financial translator specializing in translating global financial and macroeconomic news articles. Translate the given English financial news into professional, natural, and accurate Korean news tone. Ensure all financial terms, indicators, and names are translated correctly according to standard financial terminology. Maintain exact numerical values, currencies, percentages, and dates without any modification. Do not add any conversational remarks, introductions, or explanations; output only the translated text."
 
-PARAMETER stop "<end_of_turn>"
-PARAMETER stop "<eos>"
+TEMPLATE """{{ if .System }}[|system|]{{ .System }}[|endofturn|]
+{{ end }}{{ if .Prompt }}[|user|]{{ .Prompt }}
+{{ end }}[|assistant|]{{ .Response }}[|endofturn|]"""
+
+PARAMETER stop "[|endofturn|]"
 PARAMETER temperature 0.7
 EOF
 echo "[+] Modelfile generated successfully."

@@ -15,7 +15,7 @@ buddy-cortex/
 ├── pyproject.toml             # uv & project configuration (dependencies like mlx-lm)
 ├── uv.lock                    # Dependency lockfile
 ├── dataset.csv                # (User-provided) Source English and translation pairs
-├── convert_dataset.py         # CSV -> Gemma-2 format JSONL converter script
+├── convert_dataset.py         # CSV -> EXAONE-3.5 format JSONL converter script
 ├── train_pipeline.sh          # Shell script to automate data preparation and LoRA training
 └── convert_gguf.sh            # Shell script to fuse FP16 base, convert to GGUF, and quantize
 ```
@@ -74,7 +74,7 @@ Automate the entire pipeline—from verifying prerequisites and preparing datase
 ```
 
 * **Options**:
-  * `-m, --model <str>`: Base model to use (default: `mlx-community/gemma-2-9b-it-4bit`)
+  * `-m, --model <str>`: Base model to use (default: `mlx-community/EXAONE-3.5-7.8B-Instruct-4bit`)
   * `-d, --data <path>`: Directory to save converted JSONL files (default: `./data`)
   * `-l, --num-layers <int>`: Number of layers to apply LoRA (default: `16`)
   * `-b, --batch-size <int>`: Batch size for training (default: `1`)
@@ -90,7 +90,7 @@ Automate the entire pipeline—from verifying prerequisites and preparing datase
 
 ### 2. Run Standalone Data Conversion (`convert_dataset.py`)
 
-If you want to split and format the dataset into Gemma-2 compatible `train.jsonl` and `valid.jsonl` files without running the training pipeline:
+If you want to split and format the dataset into EXAONE-3.5 compatible `train.jsonl` and `valid.jsonl` files without running the training pipeline:
 ```bash
 uv run python convert_dataset.py --val-ratio 0.1 --seed 42
 ```
@@ -102,17 +102,15 @@ uv run python convert_dataset.py --val-ratio 0.1 --seed 42
 
 To run your fine-tuned model in Ollama, you must convert the trained weights (LoRA adapters) into the GGUF format and quantize them. A dedicated script, `convert_gguf.sh`, is provided to automate this entire pipeline.
 
-### Hugging Face Authentication & Gated Model Access (Crucial)
-Since we are using **Gemma 2 9B Instruct** as the base model, which is a **gated model** on Hugging Face, you must set up authentication before converting the model. If you bypass this, the fusion script will throw a `403 Forbidden` error.
+### Hugging Face Authentication (Optional)
+Unlike Gemma-2, **EXAONE-3.5-7.8B-Instruct** is not a gated model, so you do not need to accept a license agreement on Hugging Face to download it. However, if you want to authenticate or need to avoid rate limits:
 
-1. **Accept the License Agreement**:
-   Visit the [google/gemma-2-9b-it](https://huggingface.co/google/gemma-2-9b-it) page on Hugging Face, log in, and accept the license terms ("Agree and access repository").
-2. **Log In via CLI**:
-   Note that the legacy `huggingface-cli login` tool is deprecated. Use the modern Hugging Face CLI command to authenticate:
+1. **Log In via CLI**:
+   Use the Hugging Face CLI command to authenticate:
    ```bash
    hf auth login
    ```
-   *Note: If the CLI does not pass the credentials correctly to the python environment, you can set the token directly as an environment variable:*
+   *Note: If you prefer, you can set the token directly as an environment variable:*
    ```bash
    export HF_TOKEN="your_huggingface_access_token"
    ```
@@ -123,7 +121,7 @@ Execute the conversion script to automatically fuse adapters with the unquantize
 ./convert_gguf.sh
 ```
 * **Options**:
-  * `-m, --model <str>`: Base unquantized Hugging Face model (default: `google/gemma-2-9b-it`)
+  * `-m, --model <str>`: Base unquantized Hugging Face model (default: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct`)
   * `-a, --adapter-path <path>`: Directory containing adapters (default: `adapters`)
   * `-q, --quantization <str>`: Quantization format (default: `Q4_K_M`)
   * `-o, --output <path>`: Final GGUF path (default: `fused_model_q4_k_m.gguf`)
