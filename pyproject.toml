@@ -1,10 +1,18 @@
 [project]
 name = "cortex"
 version = "0.1.0"
-description = ""
+description = "Financial English-to-Korean Translation Engine"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "mlx-lm>=0.31.3",
-    "torch>=2.12.1",
+    "torch>=2.2.0",
+    "transformers>=4.38.0",
+    "datasets>=2.18.0",
+    "sentencepiece>=0.2.0",
+    "sacremoses>=0.1.1",
+    "pandas>=2.2.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "accelerate>=0.28.0",
+    "scikit-learn>=1.4.0",
 ]

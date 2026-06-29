@@ -1,12 +1,5 @@
 .venv
-
-dataset.csv
-
-data/
-fused_model*
-adapters/
-Modelfile
-
-llama.cpp
-
 .DS_Store
+dataset.csv
+__pycache__
+nllb-financial-translator/

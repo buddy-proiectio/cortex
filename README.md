@@ -1,8 +1,10 @@
 # 🧠 buddy-cortex
 
-`buddy-cortex` is a fine-tuning pipeline project for building an **English-to-Korean financial translation LLM** designed to translate global financial and macroeconomics news articles into a professional Korean news tone.
+`buddy-cortex` is a translation engine and fine-tuning workspace designed to build and serve high-quality **English-to-Korean financial/macroeconomics news translation models**.
 
-It is optimized for Apple Silicon (such as M-series Macs) using the Apple MLX framework (`mlx-lm`). All Python dependencies and virtual environments are managed cleanly and efficiently with `uv`.
+It currently supports:
+1. **Fine-Tuning & Quantization Pipeline** using the MLX framework (`mlx-lm`) and EXAONE 3.5.
+2. **NLLB-200 dist-600M NMT Serving Engine** running a FastAPI server on port `8000`.
 
 ---
 
@@ -10,129 +12,75 @@ It is optimized for Apple Silicon (such as M-series Macs) using the Apple MLX fr
 
 ```text
 buddy-cortex/
-├── data/                      # Directory for train.jsonl and valid.jsonl (auto-generated)
-├── .python-version            # Recommended Python version for the project
-├── pyproject.toml             # uv & project configuration (dependencies like mlx-lm)
-├── uv.lock                    # Dependency lockfile
-├── dataset.csv                # (User-provided) Source English and translation pairs
-├── convert_dataset.py         # CSV -> EXAONE-3.5 format JSONL converter script
-├── train_pipeline.sh          # Shell script to automate data preparation and LoRA training
-└── convert_gguf.sh            # Shell script to fuse FP16 base, convert to GGUF, and quantize
+├── data/                      # Converted JSONL datasets for MLX training
+├── .python-version            # Python runtime version
+├── pyproject.toml             # uv dependencies
+├── uv.lock                    # Locked dependencies
+├── dataset.csv                # Financial news translation dataset (en_text, ko_text)
+├── app.py                     # FastAPI server serving NLLB-200 translation (port 8000)
+├── train_nmt.py               # Seq2Seq fine-tuning script for NLLB-200
+├── convert_dataset.py         # Dataset converter for EXAONE/MLX formats
+├── train_pipeline.sh          # Auto-trainer script for EXAONE/MLX LoRA
+└── convert_gguf.sh            # FP16 merger, GGUF converter, and Ollama registrar
 ```
 
 ---
 
-## 🛠️ Prerequisites
+## 🚀 Serving Engine (NLLB-200 NMT)
 
-- **OS**: macOS (Apple Silicon M-series recommended)
-- **Tools**: 
-  - `uv` (a fast, modern Python package and environment manager)
-    > If you do not have `uv` installed, install it using:
-    > ```bash
-    > curl -LsSf https://astral.sh/uv/install.sh | sh
-    > ```
-  - `cmake` (required for compiling `llama.cpp` quantization tools)
-    > Install it using Homebrew:
-    > ```bash
-    > brew install cmake
-    > ```
-  - `ollama` (for running the quantized model locally)
+The translation pipeline in `buddy-core` depends on the NMT server running on `http://127.0.0.1:8000`.
 
----
-
-## 🚀 Getting Started
-
-### Step 1. Synchronize Project Dependencies
-
-Run `uv sync` to create a virtual environment and install all required libraries automatically:
+### 1. Launching the Translation Server
+Run the Uvicorn FastAPI server manually or let `buddy-core` manage its lifecycle dynamically:
 ```bash
-uv sync
+# In buddy-cortex directory
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
+* The server will automatically load the local fine-tuned model located at `./nllb-financial-translator`, falling back to the base model `facebook/nllb-200-distilled-600M` if not found.
 
-### Step 2. Prepare the Dataset (`dataset.csv`)
-
-Place your `dataset.csv` file in the root directory of the project.
-- Required columns: `en_text` (English article text) and `ko_text` (Korean translation text).
-  *(If column names do not match explicitly, the script will automatically fallback to the first two columns.)*
+### 2. API Endpoints
+* **Health Check**: `GET http://127.0.0.1:8000/`
+  * Returns: `{"status": "ok", "device": "mps", "model_type": "fine-tuned"}`
+* **Translate**: `POST http://127.0.0.1:8000/translate`
+  * Payload: `{"text": "English text here..."}`
+  * Response: `{"translated_text": "한국어 번역본..."}`
 
 ---
 
-## 🏃 Execution Guide
+## 📈 Incremental Fine-Tuning Guide (Warm-Starting)
 
-### 1. Run the Unified Pipeline (`train_pipeline.sh`)
+To continuously improve translation quality as you gather more high-quality translation data:
 
-Automate the entire pipeline—from verifying prerequisites and preparing datasets to executing LoRA fine-tuning and merging (fusing) the weights.
-
-**Dry-run (verify the environment setup and data prep without running the actual training):**
-```bash
-./train_pipeline.sh --dry-run
+### Step 1. Append New Translation Pairs
+Open `dataset.csv` and append your new translation pairs to the end of the file, maintaining the column structure:
+```csv
+en_text,ko_text
+"Original English news sentence...","전문 금융 번역 한국어..."
 ```
 
-**Run actual LoRA Fine-Tuning and Merging:**
-```bash
-./train_pipeline.sh --iters 1000 --batch-size 1 --num-layers 16
-```
+### Step 2. Warm-Start Training (NLLB-200 NMT)
+Instead of training from scratch using the raw base model, you can continue training from your already fine-tuned checkpoints (`./nllb-financial-translator`) to preserve prior learning.
 
-* **Options**:
-  * `-m, --model <str>`: Base model to use (default: `mlx-community/EXAONE-3.5-7.8B-Instruct-4bit`)
-  * `-d, --data <path>`: Directory to save converted JSONL files (default: `./data`)
-  * `-l, --num-layers <int>`: Number of layers to apply LoRA (default: `16`)
-  * `-b, --batch-size <int>`: Batch size for training (default: `1`)
-  * `--grad-accumulation-steps <int>`: Number of steps to accumulate gradients (default: `4`)
-  * `-i, --iters <int>`: Number of training iterations (default: `1000`)
-  * `-a, --adapter-path <path>`: Directory to save adapters (default: `adapters`)
-  * `-s, --save-path <path>`: Directory to save the fused model (default: `fused_model`)
-  * `--max-seq-length <int>`: Maximum sequence length (default: `2048`)
-  * `--val-batches <int>`: Number of validation batches (default: `10`, use `-1` for all)
-  * `--no-grad-checkpoint`: Disable gradient checkpointing to speed up training if memory is sufficient
-
----
-
-### 2. Run Standalone Data Conversion (`convert_dataset.py`)
-
-If you want to split and format the dataset into EXAONE-3.5 compatible `train.jsonl` and `valid.jsonl` files without running the training pipeline:
-```bash
-uv run python convert_dataset.py --val-ratio 0.1 --seed 42
-```
-* Once completed successfully, `train.jsonl` and `valid.jsonl` will be generated in `./data/`.
-
----
-
-## 🦙 GGUF Conversion & Ollama Deployment
-
-To run your fine-tuned model in Ollama, you must convert the trained weights (LoRA adapters) into the GGUF format and quantize them. A dedicated script, `convert_gguf.sh`, is provided to automate this entire pipeline.
-
-### Hugging Face Authentication (Optional)
-Unlike Gemma-2, **EXAONE-3.5-7.8B-Instruct** is not a gated model, so you do not need to accept a license agreement on Hugging Face to download it. However, if you want to authenticate or need to avoid rate limits:
-
-1. **Log In via CLI**:
-   Use the Hugging Face CLI command to authenticate:
-   ```bash
-   hf auth login
+1. Open `train_nmt.py`.
+2. Locate the model configuration at line 111:
+   ```python
+   # Modify this line to point to the local directory
+   model_name = "./nllb-financial-translator"
    ```
-   *Note: If you prefer, you can set the token directly as an environment variable:*
+3. Run the training script:
    ```bash
-   export HF_TOKEN="your_huggingface_access_token"
+   .venv/bin/python train_nmt.py --epochs 3 --learning-rate 2e-5
    ```
+   * **Tip**: For warm-starts, use a lower learning rate (e.g. `2e-5` or `1e-5`) and fewer epochs (`2` or `3`) to prevent overriding previously learned weights (catastrophic forgetting).
 
-### 1. Run GGUF Conversion Script (`convert_gguf.sh`)
-Execute the conversion script to automatically fuse adapters with the unquantized FP16 base model, build `llama.cpp`, convert to GGUF, quantize, and clean up temporary files:
-```bash
-./convert_gguf.sh
-```
-* **Options**:
-  * `-m, --model <str>`: Base unquantized Hugging Face model (default: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct`)
-  * `-a, --adapter-path <path>`: Directory containing adapters (default: `adapters`)
-  * `-q, --quantization <str>`: Quantization format (default: `Q4_K_M`)
-  * `-o, --output <path>`: Final GGUF path (default: `fused_model_q4_k_m.gguf`)
-  * `-n, --name <str>`: Ollama model registration name (default: `buddy-cortex`)
-
-### 2. Register & Run in Ollama
-Once `convert_gguf.sh` completes, it generates a `Modelfile` in the root directory. Register and run the model in Ollama:
-```bash
-# 1. Register the model in Ollama
-ollama create buddy-cortex -f Modelfile
-
-# 2. Run the model
-ollama run buddy-cortex
-```
+### Step 3. Warm-Start Training (EXAONE-3.5 MLX)
+To incrementally train the EXAONE-3.5 model using the MLX framework:
+1. Append to `dataset.csv`.
+2. Re-convert your data using:
+   ```bash
+   uv run python convert_dataset.py
+   ```
+3. Run `train_pipeline.sh` pointing to the previous adapters or model folder:
+   ```bash
+   ./train_pipeline.sh --iters 500 --learning-rate 1e-6
+   ```
